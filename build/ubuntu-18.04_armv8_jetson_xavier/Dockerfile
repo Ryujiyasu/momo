@@ -1,5 +1,5 @@
 # syntax = docker/dockerfile:1.1.1-experimental
-FROM ubuntu:18.04
+FROM ubuntu:20.04
 
 ARG PACKAGE_NAME
 
@@ -8,12 +8,19 @@ LABEL jp.shiguredo.momo=$PACKAGE_NAME
 RUN rm -f /etc/apt/apt.conf.d/docker-clean; echo 'Binary::apt::APT::Keep-Downloaded-Packages "true";' > /etc/apt/apt.conf.d/keep-cache
 
 # パッケージのインストール
+RUN apt-get update
+RUN apt-get -y upgrade
+ARG DEBIAN_FRONTEND=noninteractive
+ENV TZ=Asia/Tokyo
+RUN DEBIAN_FRONTEND=noninteractive apt-get install -y tzdata
+
 
 COPY script/apt_install_arm.sh /root/
 RUN --mount=type=cache,id=$PACKAGE_NAME,target=/var/cache/apt --mount=type=cache,id=$PACKAGE_NAME,target=/var/lib/apt \
   /root/apt_install_arm.sh
 
 # RootFS の構築
+
 
 COPY script/init_rootfs_arm64.sh /root/
 COPY arm64.conf /root/
@@ -30,7 +37,7 @@ RUN /root/jetson.sh
 ARG WEBRTC_BUILD_VERSION
 
 COPY script/get_webrtc.sh /root/
-RUN /root/get_webrtc.sh "$WEBRTC_BUILD_VERSION" ubuntu-18.04_armv8 /root /root
+RUN /root/get_webrtc.sh "$WEBRTC_BUILD_VERSION" ubuntu-20.04_armv8 /root /root
 
 # コンパイラの取得
 

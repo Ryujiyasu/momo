@@ -5,6 +5,7 @@
     "files.associations": {
         "*.cs": "csharp",
         "*.txt": "plaintext",
-        "*.ipp": "cpp"
+        "*.ipp": "cpp",
+        "iostream": "cpp"
     }
 }

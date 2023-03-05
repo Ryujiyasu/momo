@@ -669,7 +669,6 @@ elseif (TARGET_OS STREQUAL "linux")
             ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvLogging.cpp
             ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvV4l2Element.cpp
             ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvV4l2ElementPlane.cpp
-            ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvVideoConverter.cpp
             ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvVideoEncoder.cpp
             ${SYSROOT}/usr/src/jetson_multimedia_api/samples/common/classes/NvVideoDecoder.cpp
         )
@@ -688,13 +687,12 @@ elseif (TARGET_OS STREQUAL "linux")
             nvv4l2
             nvv4lconvert
             nvbuf_utils
-            nvbuf_fdmap
-            nvddk_vic
-            nvddk_2d_v2
+            #nvbuf_fdmap
+            #nvddk_vic
+            #nvddk_2d_v2
             nvjpeg
-            nvrm
-            nvrm_graphics
-            nvos
+            nvbufsurface
+            #nvos
         )
       endif(USE_JETSON_ENCODER)
     else()
