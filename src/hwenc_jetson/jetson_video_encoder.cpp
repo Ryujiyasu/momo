@@ -16,6 +16,7 @@
 
 // WebRTC
 #include <common_video/libyuv/include/webrtc_libyuv.h>
+#include <modules/video_coding/svc/create_scalability_structure.h>
 #include <rtc_base/checks.h>
 #include <rtc_base/logging.h>
 #include <rtc_base/time_utils.h>
@@ -132,6 +133,15 @@ int32_t JetsonVideoEncoder::InitEncode(const webrtc::VideoCodec* codec_settings,
                      << codec_settings->VP9().numberOfSpatialLayers;
     RTC_LOG(LS_INFO) << "interLayerPred: "
                      << codec_settings->VP9().interLayerPred;
+  } else if (codec_settings->codecType == webrtc::kVideoCodecAV1) {
+    auto scalability_mode = codec_settings->GetScalabilityMode();
+    if (!scalability_mode) {
+      RTC_LOG(LS_WARNING) << "Scalability mode is not set, using 'L1T1'.";
+      scalability_mode = webrtc::ScalabilityMode::kL1T1;
+    }
+    RTC_LOG(LS_INFO) << "InitEncode scalability_mode:"
+                     << (int)*scalability_mode;
+    svc_controller_ = webrtc::CreateScalabilityStructure(*scalability_mode);
   }
   framerate_ = codec_settings->maxFramerate;
 
@@ -229,6 +239,9 @@ int32_t JetsonVideoEncoder::JetsonConfigure() {
                                           2 * 1024 * 1024);
   } else if (codec_.codecType == webrtc::kVideoCodecVP9) {
     ret = encoder_->setCapturePlaneFormat(V4L2_PIX_FMT_VP9, width_, height_,
+                                          2 * 1024 * 1024);
+  } else if (codec_.codecType == webrtc::kVideoCodecAV1) {
+    ret = encoder_->setCapturePlaneFormat(V4L2_PIX_FMT_AV1, width_, height_,
                                           2 * 1024 * 1024);
   }
   INIT_ERROR(ret < 0, "Failed to encoder setCapturePlaneFormat");
@@ -666,6 +679,11 @@ webrtc::VideoEncoder::EncoderInfo JetsonVideoEncoder::GetEncoderInfo() const {
     static const int kHighVp9QpThreshold = 151;
     info.scaling_settings =
         VideoEncoder::ScalingSettings(kLowVp9QpThreshold, kHighVp9QpThreshold);
+  } else if (codec_.codecType == webrtc::kVideoCodecAV1) {
+    static const int kLowAv1QpThreshold = 145;
+    static const int kHighAv1QpThreshold = 205;
+    info.scaling_settings =
+        VideoEncoder::ScalingSettings(kLowAv1QpThreshold, kHighAv1QpThreshold);
   }
   return info;
 }
@@ -926,7 +944,8 @@ int32_t JetsonVideoEncoder::SendFrame(
 
     codec_specific.codecSpecific.H264.packetization_mode =
         webrtc::H264PacketizationMode::NonInterleaved;
-  } else if (codec_.codecType == webrtc::kVideoCodecVP9 ||
+  } else if (codec_.codecType == webrtc::kVideoCodecAV1 ||
+             codec_.codecType == webrtc::kVideoCodecVP9 ||
              codec_.codecType == webrtc::kVideoCodecVP8) {
     // VP8, VP9 はIVFヘッダーがエンコードフレームについているので取り除く
     if ((buffer[0] == 'D') && (buffer[1] == 'K') && (buffer[2] == 'I') &&
@@ -971,6 +990,27 @@ int32_t JetsonVideoEncoder::SendFrame(
         codec_specific.codecSpecific.VP9.height[0] =
             encoded_image_._encodedHeight;
         codec_specific.codecSpecific.VP9.gof.CopyGofInfoVP9(gof_);
+      }else if (codec_.codecType == webrtc::kVideoCodecAV1) {
+        bool is_key = buffer[2] == 0x0a;
+        // v4l2_ctrl_videoenc_outputbuf_metadata.KeyFrame が効いていない
+        // キーフレームの時には OBU_SEQUENCE_HEADER が入っているために 0x0a になるためこれを使う
+        // キーフレームではない時には OBU_FRAME が入っていて 0x32 になっている
+        if (is_key) {
+          encoded_image_._frameType = webrtc::VideoFrameType::kVideoFrameKey;
+        }
+
+        std::vector<webrtc::ScalableVideoController::LayerFrameConfig>
+            layer_frames = svc_controller_->NextFrameConfig(is_key);
+        codec_specific.end_of_picture = true;
+        codec_specific.generic_frame_info =
+            svc_controller_->OnEncodeDone(layer_frames[0]);
+        if (is_key && codec_specific.generic_frame_info) {
+          codec_specific.template_structure =
+              svc_controller_->DependencyStructure();
+          auto& resolutions = codec_specific.template_structure->resolutions;
+          resolutions = {webrtc::RenderResolution(encoded_image_._encodedWidth,
+                                                  encoded_image_._encodedHeight)};
+        }
       }
     }
   }
